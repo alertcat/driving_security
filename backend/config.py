@@ -1,5 +1,5 @@
 class Config:
-    GOOGLE_API_KEY = "AIzaSyDj--w-mh3zKme37CGd-BbAH__NaceuhVM"
+    
 
     GOOGLE_GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json?address={address}&key={API_KEY}"
     GOOGLE_AIR_QUALITY_URL = "https://airquality.googleapis.com/v1/currentConditions:lookup?key={API_KEY}"
