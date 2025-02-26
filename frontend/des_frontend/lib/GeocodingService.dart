@@ -4,7 +4,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class Geocodingservice {
-  static final String apiKey = dotenv.env["MAP_API_KEY"] ?? "";
+  static final String apiKey = dotenv.env['MAP_API_KEY']!;
   static const String baseUrl = "https://graphhopper.com/api/1/geocode";
 
   static Future<LatLng> getCoordinates(String address) async {
