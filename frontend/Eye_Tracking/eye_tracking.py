@@ -1,7 +1,11 @@
+import asyncio
+import json
 import time
 import cv2
 import numpy as np
+import websockets
 import dlib
+import socket
 from collections import deque
 
 # Load Dlib's face detector and landmark predictor
@@ -18,7 +22,7 @@ calibration_points = [
 pupil_positions = []
 screen_positions = []
 
-pupil_buffer = deque(maxlen=10) # Adjust maxlen for more/less smoothing
+pupil_buffer = deque(maxlen=5) # Adjust maxlen for more/less smoothing
 
 def get_eye_points(landmarks, eye_indices):
     # Extract the eye coordinates from landmarks
@@ -171,7 +175,8 @@ def calibrate():
     return len(pupil_positions) > 0
 
 # Function to track eye gaze
-def track_gaze():
+async def track_gaze(websocket, path):
+    # await websocket.send(json.dumps({"test": "Hello from server"}))
     # Initialize camera
     cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
@@ -181,8 +186,9 @@ def track_gaze():
     if not cap.isOpened():
         print("Error: Could not open camera.")
         exit()
-        
+    
     while True:
+        # await websocket.send(json.dumps({"status": "Running"}))
         # Capture frame by frame
         # ret is success flag, frame is the image
         ret, frame = cap.read()
@@ -198,13 +204,13 @@ def track_gaze():
         
         # Detect faces
         faces = detector(gray)
-        print(f"Number of faces detected: {len(faces)}")
+        # print(f"Number of faces detected: {len(faces)}")
         
         for face in faces:
             try:
                 # Get facial landmarks
                 landmarks = predictor(gray, face)
-                print("Landmarks detected!")
+                # print("Landmarks detected!")
                 # print("Total number of landmarks:", landmarks.num_parts)  # Should be 68
                 # print("Sample landmark (e.g., nose tip, index 30):", landmarks.part(30).x, landmarks.part(30).y)
                 
@@ -236,8 +242,13 @@ def track_gaze():
                     smoothed_pupil = np.mean(pupil_buffer, axis=0).astype(int)
                     
                     screen_x, screen_y = map_pupil_to_screen(smoothed_pupil)
-                    print(f"Screen coordinates: ({screen_x}, {screen_y})")
+                    # print(f"Screen coordinates: ({screen_x}, {screen_y})")
                     cv2.circle(frame, (screen_x, screen_y), 10, (0, 255, 0), -1)
+                    
+                    # Send the screen coordinates to the frontend
+                    gaze_data = json.dumps({"x": screen_x, "y": screen_y})
+                    await websocket.send(gaze_data)
+                    print(f"Sending gaze data: {gaze_data}")
                     
                 if right_pupil:
                     cv2.circle(frame, right_pupil, 3, (0, 0, 255), -1)
@@ -253,18 +264,22 @@ def track_gaze():
         # Exit on 'q' key press
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
+        
+        await asyncio.sleep(0.01)  # Yield to event loop
 
     # Release the capture
     cap.release()
     cv2.destroyAllWindows()
     
 # Main function to run the eye tracking
-def run_eye_tracking():
+async def main():
     if calibrate():
-        track_gaze()
+        print("Starting WebSocket server...")
+        async with websockets.serve(track_gaze, "localhost", 5000):
+            print("Server running on ws://localhost:5000")
+            await asyncio.Future()  # Run forever
     else:
         print("Calibration failed. Exiting...")
-        
 
 if __name__ == "__main__":
-    run_eye_tracking()
+    asyncio.run(main())

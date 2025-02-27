@@ -1,5 +1,8 @@
 // ignore_for_file: file_names
 
+import 'dart:convert';
+// import 'dart:io';
+
 import 'package:camera/camera.dart';
 import 'package:des_frontend/GeocodingService.dart';
 import 'package:des_frontend/MapDirectionService.dart';
@@ -8,11 +11,16 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+// import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 class CameraScreen extends StatefulWidget {
-  final CameraDescription camera;
+  // final CameraDescription camera;
 
-  const CameraScreen({super.key, required this.camera});
+  const CameraScreen({
+    super.key,
+    // required this.camera
+  });
 
   @override
   State<CameraScreen> createState() => _CameraScreenState();
@@ -29,15 +37,55 @@ class _CameraScreenState extends State<CameraScreen> {
   final TextEditingController _destinationController = TextEditingController();
   LatLng? _destination;
 
+  // Eye tracking screen coordinates
+  double gazeX = 0;
+  double gazeY = 0;
+  late WebSocketChannel channel;
+
   @override
   void initState() {
     super.initState();
 
-    _controller = CameraController(widget.camera, ResolutionPreset.veryHigh);
-    _initializeControllerFuture = _controller.initialize();
+    _connectToServer();
+
+    // _controller = CameraController(widget.camera, ResolutionPreset.veryHigh);
+    // _initializeControllerFuture = _controller.initialize();
     _mapController = MapController();
 
     _startLocationUpdates();
+  }
+
+  void _connectToServer() {
+    channel = WebSocketChannel.connect(Uri.parse('ws://localhost:5000'));
+    print('Connecting to server');
+
+    channel.ready.then((_) {
+      print('WebSocket connection established');
+    }).catchError((error) {
+      print('Connection failed: $error');
+    });
+
+    channel.stream.listen((data) {
+      final gazeData = jsonDecode(data);
+      print(gazeData.toString());
+      setState(() {
+        double screenWidth = MediaQuery.of(context).size.width;
+        double screenHeight = MediaQuery.of(context).size.height;
+        // Safely access x and y, default to 0 if missing or invalid
+        gazeX = (gazeData['x'] is num ? gazeData['x'].toDouble() : 0.0) /
+            1280 *
+            screenWidth;
+        gazeY = (gazeData['y'] is num ? gazeData['y'].toDouble() : 0.0) /
+            720 *
+            screenHeight;
+        print('Gaze X: $gazeX, Gaze Y: $gazeY');
+      });
+    }, onDone: () {
+      print('Connection closed');
+      Future.delayed(Duration(seconds: 1), _connectToServer); // Reconnect
+    }, onError: (error) {
+      print('Error: $error');
+    });
   }
 
   void _startLocationUpdates() async {
@@ -104,6 +152,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void dispose() {
     _controller.dispose();
+    channel.sink.close();
     super.dispose();
   }
 
@@ -114,19 +163,33 @@ class _CameraScreenState extends State<CameraScreen> {
       //   title: const Center(child: Text('Webcam Stream')),
       // ),
       body: Stack(children: [
-        Positioned.fill(
-          child: FutureBuilder<void>(
-              future: _initializeControllerFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.done) {
-                  print("done");
-                  return CameraPreview(_controller);
-                } else {
-                  return const Center(
-                    child: CircularProgressIndicator(),
-                  );
-                }
-              }),
+        // Positioned.fill(
+        //   child: FutureBuilder<void>(
+        //       future: _initializeControllerFuture,
+        //       builder: (context, snapshot) {
+        //         if (snapshot.connectionState == ConnectionState.done) {
+        //           print("done");
+        //           return CameraPreview(_controller);
+        //         } else {
+        //           return const Center(
+        //             child: CircularProgressIndicator(),
+        //           );
+        //         }
+        //       }),
+        // ),
+
+        // Gaze Tracking Overlay
+        Positioned(
+          left: gazeX.clamp(0, MediaQuery.of(context).size.width - 20),
+          top: gazeY.clamp(0, MediaQuery.of(context).size.height - 20),
+          child: Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              color: Colors.red,
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
         ),
 
         // Destination Input Box
