@@ -7,23 +7,29 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized;
   await dotenv.load(fileName: "../.env");
   // Initialize available cameras
-  final cameras = await availableCameras();
-  final firstCamera = cameras.first;
+  // final cameras = await availableCameras();
+  // final firstCamera = cameras.first;
 
-  runApp(MyApp(camera: firstCamera));
+  runApp(MyApp(
+    // camera: firstCamera
+    ));
 }
 
 class MyApp extends StatelessWidget {
   // returns props of camera
-  final CameraDescription camera;
+  // final CameraDescription camera;
 
-  const MyApp({super.key, required this.camera});
+  const MyApp({super.key, 
+  // required this.camera
+  });
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: CameraScreen(camera: camera),
+      home: CameraScreen(
+        // camera: camera
+        ),
     );
   }
 }
