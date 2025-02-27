@@ -18,7 +18,7 @@ calibration_points = [
 pupil_positions = []
 screen_positions = []
 
-pupil_buffer = deque(maxlen=5) # Adjust maxlen for more/less smoothing
+pupil_buffer = deque(maxlen=10) # Adjust maxlen for more/less smoothing
 
 def get_eye_points(landmarks, eye_indices):
     # Extract the eye coordinates from landmarks
@@ -81,13 +81,13 @@ def map_pupil_to_screen(pupil):
     
     return int(x), int(y)
 
-def get_head_pose(landmarks):
-    nose = (landmarks.part(30).x, landmarks.part(30).y)
-    chin = (landmarks.part(8).x, landmarks.part(8).y)
-    dx = nose[0] - chin[0]
-    dy = nose[1] - chin[1]
-    angle = np.arctan2(dy, dx) * 180 / np.pi # Convert to degrees
-    return angle
+# def get_head_pose(landmarks):
+#     nose = (landmarks.part(30).x, landmarks.part(30).y)
+#     chin = (landmarks.part(8).x, landmarks.part(8).y)
+#     dx = nose[0] - chin[0]
+#     dy = nose[1] - chin[1]
+#     angle = np.arctan2(dy, dx) * 180 / np.pi # Convert to degrees
+#     return angle
 
 # Calculate Eye Aspect Ratio (EAR)
 def calculate_ear(eye_points):
