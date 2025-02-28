@@ -5,7 +5,7 @@ def set_client(new_client):
     global client
     client = new_client
 
-def adjust_aircon(user_prompt):
+def intent_detect(user_prompt):
     if client is None:
         raise ValueError("Client not initialized!")
     system_prompt = current_app.config['SYSTEM_PROMPT']
@@ -18,3 +18,10 @@ def adjust_aircon(user_prompt):
         response_format={'type': 'json_object'},
     )
     return response.choices[0].message.content
+    # messages = [
+    #     ("system", system_prompt),
+    #     ("user", user_prompt)
+    # ]
+    # response = client.invoke(messages)
+    # return response
+    
