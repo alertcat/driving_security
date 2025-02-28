@@ -1,5 +1,6 @@
 from flask import Flask
 from openai import OpenAI
+from langchain_ollama import OllamaLLM
 
 def create_app():
     app = Flask(__name__)
@@ -9,6 +10,9 @@ def create_app():
         base_url = app.config['OLLAMA_URL'],
         api_key='ollama',
     )
+    # client = OllamaLLM(
+    #     model='deepseek-r1:14b',
+    # )
     from .models import set_client
     set_client(client)
 
