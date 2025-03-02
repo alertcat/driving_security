@@ -1,6 +1,6 @@
 from flask import Blueprint
-from .functions import get_air_quality, get_navigation, get_nearby
-from .models import intent_detect
+from .functions import get_air_quality, get_navigation, get_nearby, get_weather
+from .models import intent_detect, json_summarize
 import json
 
 bp = Blueprint('main', __name__)
@@ -9,32 +9,26 @@ bp = Blueprint('main', __name__)
 def home():
     return 'Hello, World!'
 
-@bp.route('/airquality/<address>')
-def airquality(address):
-    response = get_air_quality(address)
-    return response
-
-@bp.route('/navigation/<origin>/<destination>')
-def navigation(origin, destination):
-    response = get_navigation(origin, destination)
-    return response
-
-@bp.route('/nearby/<address>/<keyword>')
-def nearby(address, keyword):
-    response = get_nearby(address, keyword)
-    return response
-
 @bp.route('/agent/<user_prompt>')
 def agent(user_prompt):
     intent = json.loads(intent_detect(user_prompt))
+    print(intent)
+
     if(intent["intent"] == "adjust_facilities"):
         return intent
+    
     elif(intent["intent"] == "navigation"):
-        return get_navigation("NUS", intent["destination"])
+        result = get_navigation("NUS", intent["destination"])
+        return json_summarize(json.dumps(result))
+    
     elif(intent["intent"] == "poi_search"):
-        return get_nearby("NUS", intent["categories"])
+        result = get_nearby("NUS", intent["categories"])
+        return json_summarize(json.dumps(result))
+    
     elif(intent["intent"] == "query"):
         if(intent["type"] == "weather"):
-            return get_air_quality("NUS")
+            result = get_weather("NUS")
+            print(result)
         elif(intent["type"] == "air_quality"):
-            return get_air_quality("NUS")
+            result = get_air_quality("NUS")
+        return json_summarize(json.dumps(result))

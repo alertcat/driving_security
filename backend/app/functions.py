@@ -59,3 +59,9 @@ def get_nearby(address, keyword):
     }
     response = requests.post(url, json=params, headers=headers)
     return response.json()
+
+def get_weather(address):
+    location = get_coordinates(address)
+    url = current_app.config['OPEN_WEATHER_URL'].format(lat=location['latitude'], lon=location['longitude'], API_key=current_app.config['OPEN_WEATHER_API_KEY'])
+    response = requests.get(url)
+    return response.json()["current"]
