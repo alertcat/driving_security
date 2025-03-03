@@ -1,6 +1,6 @@
 from flask import Blueprint
 from .functions import get_air_quality, get_navigation, get_nearby, get_weather
-from .models import intent_detect, json_summarize
+from .models import intent_detect, json_summarize, manual_refer
 import json
 
 bp = Blueprint('main', __name__)
@@ -28,7 +28,12 @@ def agent(user_prompt):
     elif(intent["intent"] == "query"):
         if(intent["type"] == "weather"):
             result = get_weather("NUS")
-            print(result)
+            return json_summarize(json.dumps(result))
         elif(intent["type"] == "air_quality"):
             result = get_air_quality("NUS")
-        return json_summarize(json.dumps(result))
+            return json_summarize(json.dumps(result))
+        elif(intent["type"] == "vehicle"):
+            result = manual_refer(user_prompt)
+            return result
+    else:
+        return "I'm sorry, I don't understand. Could you please provide more information?"
