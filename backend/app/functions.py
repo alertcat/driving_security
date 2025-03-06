@@ -20,7 +20,7 @@ def get_air_quality(address):
     if response.status_code == 200:
         return response.json()
     else:
-        print(f"请求失败，状态码: {response.status_code}, 错误信息: {response.text}")
+        print(f"Request failed: {response.status_code}, error message: {response.text}")
 
 def get_navigation(origin, destination):
     gmaps = googlemaps.Client(key=current_app.config['GOOGLE_API_KEY'])
@@ -63,5 +63,12 @@ def get_nearby(address, keyword):
 def get_weather(address):
     location = get_coordinates(address)
     url = current_app.config['OPEN_WEATHER_URL'].format(lat=location['latitude'], lon=location['longitude'], API_key=current_app.config['OPEN_WEATHER_API_KEY'])
-    response = requests.get(url)
-    return response.json()["current"]
+    weather_data = requests.get(url)
+    weather_data = weather_data.json()["current"]
+    response = {
+        "temperature": weather_data["temp"],
+        "feels_like": weather_data["feels_like"],
+        "humidity": weather_data["humidity"],
+        "weather": weather_data["weather"][0]["description"]
+    }
+    return response

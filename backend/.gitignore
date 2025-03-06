@@ -1,2 +1,4 @@
 .gitignore
 config.py
+audio.wav
+output.wav
