@@ -5,7 +5,6 @@ import cv2
 import numpy as np
 import websockets
 import dlib
-import socket
 from collections import deque
 
 # Load Dlib's face detector and landmark predictor
