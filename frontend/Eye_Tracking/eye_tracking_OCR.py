@@ -371,7 +371,7 @@ async def main():
             print("Server running on ws://localhost:5000")
             await asyncio.Future()
     else:
-        print("Calibration failed. Exiting...")
+        print("Calibration Failed. Exiting...")
 
 if __name__ == "__main__":
     asyncio.run(main())
