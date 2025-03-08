@@ -1,5 +1,6 @@
 // ignore_for_file: file_names
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 // import 'dart:io';
@@ -28,8 +29,8 @@ class CameraScreen extends StatefulWidget {
 }
 
 class _CameraScreenState extends State<CameraScreen> {
-  late CameraController _controller;
-  late Future<void> _initializeControllerFuture;
+  // late CameraController _controller;
+  // late Future<void> _initializeControllerFuture;
   List<String> _directions = [];
   List<LatLng> _routePolyline = [];
   // Set default location
@@ -38,17 +39,32 @@ class _CameraScreenState extends State<CameraScreen> {
   final TextEditingController _destinationController = TextEditingController();
   LatLng? _destination;
 
+  double _screenWidth = 0.0;
+  double _screenHeight = 0.0;
+
   // Eye tracking screen coordinates
   double gazeX = 0;
   double gazeY = 0;
+
+  // OCR results
   String ocrResults = '';
   String restaurantName = '';
   double box_x1 = 0;
   double box_x2 = 0;
   double box_y1 = 0;
   double box_y2 = 0;
+
+  // Image data (Will be changed to video and live footage soon)
   Uint8List? _imageBytes;
+
+  // Chatbox with Computer
+  final List<Map<String, String>> _chatMessages = []; // List of chat messages
+  final TextEditingController _chatController =
+      TextEditingController(); // Chat input controller
+
+  // Websocket channel
   late WebSocketChannel channel;
+  StreamSubscription? _webSocketSubscription;
 
   @override
   void initState() {
@@ -63,6 +79,14 @@ class _CameraScreenState extends State<CameraScreen> {
     _startLocationUpdates();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Cache screen dimensions safely
+    _screenWidth = MediaQuery.of(context).size.width;
+    _screenHeight = MediaQuery.of(context).size.height;
+  }
+
   void _connectToServer() {
     channel = WebSocketChannel.connect(Uri.parse('ws://localhost:5000'));
     print('Connecting to server');
@@ -73,48 +97,68 @@ class _CameraScreenState extends State<CameraScreen> {
       print('Connection failed: $error');
     });
 
-    channel.stream.listen((data) {
+    _webSocketSubscription = channel.stream.listen((data) {
       // it is image data
       if (data is List<int>) {
         setState(() {
           _imageBytes = Uint8List.fromList(data);
         });
       } else if (data is String) {
-        // else it is gaze data
-        final gazeData = jsonDecode(data);
-        print(gazeData.toString());
-        setState(() {
-          double screenWidth = MediaQuery.of(context).size.width;
-          double screenHeight = MediaQuery.of(context).size.height;
-          // Safely access x and y, default to 0 if missing or invalid
-          gazeX = (gazeData['x'] is num ? gazeData['x'].toDouble() : 0.0) /
-              1280 *
-              screenWidth;
-          gazeY = (gazeData['y'] is num ? gazeData['y'].toDouble() : 0.0) /
-              720 *
-              screenHeight;
+        try {
+          // Decode the raw string into a Map
+          final decodedData = jsonDecode(data) as Map<String, dynamic>;
 
-          // Handle OCR results
-          if (gazeData.containsKey('ocr_results') &&
-              gazeData['ocr_results'] is List) {
-            ocrResults = jsonEncode(gazeData['ocr_results']);
-            List<dynamic> ocrList = jsonDecode(ocrResults);
-            if (ocrList.isNotEmpty) {
-              restaurantName = ocrList[0]['text'];
-              box_x1 = ocrList[0]['x1'].toDouble();
-              box_x2 = ocrList[0]['x2'].toDouble();
-              box_y1 = ocrList[0]['y1'].toDouble();
-              box_y2 = ocrList[0]['y2'].toDouble();
-            } else {
-              box_x1 = box_x2 = box_y1 = box_y2 = 0;
-            }
-          } else {
-            ocrResults = '';
-            box_x1 = box_x2 = box_y1 = box_y2 = 0;
+          // Check if it's a chat message
+          if (decodedData['chat'] != null) {
+            setState(() {
+              _chatMessages.add({
+                'sender': 'Computer',
+                'text': decodedData['chat'].toString(),
+              });
+            });
           }
+          // Handle gaze and OCR data
+          else {
+            setState(() {
+              double screenWidth = MediaQuery.of(context).size.width;
+              double screenHeight = MediaQuery.of(context).size.height;
+              // Safely access x and y, default to 0 if missing or invalid
+              gazeX = (decodedData['x'] is num
+                      ? decodedData['x'].toDouble()
+                      : 0.0) /
+                  1280 *
+                  screenWidth;
+              gazeY = (decodedData['y'] is num
+                      ? decodedData['y'].toDouble()
+                      : 0.0) /
+                  720 *
+                  screenHeight;
 
-          print('Gaze X: $gazeX, Gaze Y: $gazeY');
-        });
+              // Handle OCR results
+              if (decodedData.containsKey('ocr_results') &&
+                  decodedData['ocr_results'] is List) {
+                ocrResults = jsonEncode(decodedData['ocr_results']);
+                List<dynamic> ocrList = jsonDecode(ocrResults);
+                if (ocrList.isNotEmpty) {
+                  restaurantName = ocrList[0]['text'];
+                  box_x1 = ocrList[0]['x1'].toDouble();
+                  box_x2 = ocrList[0]['x2'].toDouble();
+                  box_y1 = ocrList[0]['y1'].toDouble();
+                  box_y2 = ocrList[0]['y2'].toDouble();
+                } else {
+                  box_x1 = box_x2 = box_y1 = box_y2 = 0;
+                }
+              } else {
+                ocrResults = '';
+                box_x1 = box_x2 = box_y1 = box_y2 = 0;
+              }
+
+              print('Gaze X: $gazeX, Gaze Y: $gazeY');
+            });
+          }
+        } catch (e) {
+          print("Error parsing data: $e");
+        }
       } else {
         print('Unknown data type: $data');
       }
@@ -124,6 +168,16 @@ class _CameraScreenState extends State<CameraScreen> {
     }, onError: (error) {
       print('Error: $error');
     });
+  }
+
+  void _sendMessage(String message) {
+    if (message.isNotEmpty) {
+      setState(() {
+        _chatMessages.add({'sender': 'You', 'text': message});
+      });
+      channel.sink.add(jsonEncode({'chat': message}));
+      _chatController.clear();
+    }
   }
 
   void _startLocationUpdates() async {
@@ -189,7 +243,10 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
-    _controller.dispose();
+    // _controller.dispose();
+    _chatController.dispose();
+    _destinationController.dispose();
+    _webSocketSubscription?.cancel();
     channel.sink.close();
     super.dispose();
   }
@@ -200,7 +257,7 @@ class _CameraScreenState extends State<CameraScreen> {
       // appBar: AppBar(
       //   title: const Center(child: Text('Webcam Stream')),
       // ),
-      body: Stack(children: [
+      body: Stack(fit: StackFit.expand, children: [
         // Positioned.fill(
         //   child: FutureBuilder<void>(
         //       future: _initializeControllerFuture,
@@ -325,28 +382,101 @@ class _CameraScreenState extends State<CameraScreen> {
                         ])))),
 
         // Directions (Bottom right)
+        // Positioned(
+        //     bottom: 20,
+        //     right: 20,
+        //     child: Container(
+        //       width: 200,
+        //       padding: const EdgeInsets.all(10),
+        //       decoration: BoxDecoration(
+        //         color: Colors.black.withOpacity(0.7),
+        //         borderRadius: BorderRadius.circular(10),
+        //       ),
+        //       child: Column(
+        //         children: _directions
+        //             .map((step) => Text(
+        //                   step,
+        //                   style: const TextStyle(
+        //                       color: Colors.white, fontSize: 12),
+        //                   maxLines: 1,
+        //                   overflow: TextOverflow.ellipsis,
+        //                 ))
+        //             .toList(),
+        //       ),
+        //     ))
+
+        // Chatbox with Computer
         Positioned(
-            bottom: 20,
-            right: 20,
-            child: Container(
-              width: 200,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.7),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Column(
-                children: _directions
-                    .map((step) => Text(
-                          step,
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 12),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ))
-                    .toList(),
-              ),
-            ))
+          bottom: 20,
+          right: 20,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.7),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 200, // Explicit width to ensure layout stability
+                  height: 100, // Fixed height for the chat area
+                  child: _chatMessages.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'No messages yet',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        )
+                      : ListView.builder(
+                          reverse: true,
+                          itemCount: _chatMessages.length,
+                          itemBuilder: (context, index) {
+                            final message =
+                                _chatMessages[_chatMessages.length - 1 - index];
+                            return ListTile(
+                              dense: true,
+                              title: Text(
+                                '${message['sender']}: ${message['text']}',
+                                style: TextStyle(
+                                  color: message['sender'] == 'You'
+                                      ? Colors.green
+                                      : Colors.white,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 200, // Match the chat area width
+                      child: TextField(
+                        controller: _chatController,
+                        decoration: InputDecoration(
+                          hintText: 'Say something...',
+                          hintStyle: const TextStyle(color: Colors.grey),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(color: Colors.white),
+                          ),
+                        ),
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.send, color: Colors.white),
+                      onPressed: () => _sendMessage(_chatController.text),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ]),
     );
   }
