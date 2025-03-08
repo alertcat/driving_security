@@ -1,6 +1,7 @@
 // ignore_for_file: file_names
 
 import 'dart:convert';
+import 'dart:typed_data';
 // import 'dart:io';
 
 import 'package:camera/camera.dart';
@@ -40,6 +41,13 @@ class _CameraScreenState extends State<CameraScreen> {
   // Eye tracking screen coordinates
   double gazeX = 0;
   double gazeY = 0;
+  String ocrResults = '';
+  String restaurantName = '';
+  double box_x1 = 0;
+  double box_x2 = 0;
+  double box_y1 = 0;
+  double box_y2 = 0;
+  Uint8List? _imageBytes;
   late WebSocketChannel channel;
 
   @override
@@ -66,20 +74,50 @@ class _CameraScreenState extends State<CameraScreen> {
     });
 
     channel.stream.listen((data) {
-      final gazeData = jsonDecode(data);
-      print(gazeData.toString());
-      setState(() {
-        double screenWidth = MediaQuery.of(context).size.width;
-        double screenHeight = MediaQuery.of(context).size.height;
-        // Safely access x and y, default to 0 if missing or invalid
-        gazeX = (gazeData['x'] is num ? gazeData['x'].toDouble() : 0.0) /
-            1280 *
-            screenWidth;
-        gazeY = (gazeData['y'] is num ? gazeData['y'].toDouble() : 0.0) /
-            720 *
-            screenHeight;
-        print('Gaze X: $gazeX, Gaze Y: $gazeY');
-      });
+      // it is image data
+      if (data is List<int>) {
+        setState(() {
+          _imageBytes = Uint8List.fromList(data);
+        });
+      } else if (data is String) {
+        // else it is gaze data
+        final gazeData = jsonDecode(data);
+        print(gazeData.toString());
+        setState(() {
+          double screenWidth = MediaQuery.of(context).size.width;
+          double screenHeight = MediaQuery.of(context).size.height;
+          // Safely access x and y, default to 0 if missing or invalid
+          gazeX = (gazeData['x'] is num ? gazeData['x'].toDouble() : 0.0) /
+              1280 *
+              screenWidth;
+          gazeY = (gazeData['y'] is num ? gazeData['y'].toDouble() : 0.0) /
+              720 *
+              screenHeight;
+
+          // Handle OCR results
+          if (gazeData.containsKey('ocr_results') &&
+              gazeData['ocr_results'] is List) {
+            ocrResults = jsonEncode(gazeData['ocr_results']);
+            List<dynamic> ocrList = jsonDecode(ocrResults);
+            if (ocrList.isNotEmpty) {
+              restaurantName = ocrList[0]['text'];
+              box_x1 = ocrList[0]['x1'].toDouble();
+              box_x2 = ocrList[0]['x2'].toDouble();
+              box_y1 = ocrList[0]['y1'].toDouble();
+              box_y2 = ocrList[0]['y2'].toDouble();
+            } else {
+              box_x1 = box_x2 = box_y1 = box_y2 = 0;
+            }
+          } else {
+            ocrResults = '';
+            box_x1 = box_x2 = box_y1 = box_y2 = 0;
+          }
+
+          print('Gaze X: $gazeX, Gaze Y: $gazeY');
+        });
+      } else {
+        print('Unknown data type: $data');
+      }
     }, onDone: () {
       print('Connection closed');
       Future.delayed(Duration(seconds: 1), _connectToServer); // Reconnect
@@ -177,20 +215,32 @@ class _CameraScreenState extends State<CameraScreen> {
         //         }
         //       }),
         // ),
+        if (_imageBytes != null)
+          Positioned.fill(
+            child: Image.memory(
+              _imageBytes!,
+              fit: BoxFit.fill,
+              gaplessPlayback: true,
+            ),
+          )
+        else
+          const Center(
+            child: CircularProgressIndicator(),
+          ),
 
         // Gaze Tracking Overlay
-        Positioned(
-          left: gazeX.clamp(0, MediaQuery.of(context).size.width - 20),
-          top: gazeY.clamp(0, MediaQuery.of(context).size.height - 20),
-          child: Container(
-            width: 20,
-            height: 20,
-            decoration: BoxDecoration(
-              color: Colors.red,
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        ),
+        // Positioned(
+        //   left: gazeX.clamp(0, MediaQuery.of(context).size.width - 20),
+        //   top: gazeY.clamp(0, MediaQuery.of(context).size.height - 20),
+        //   child: Container(
+        //     width: 20,
+        //     height: 20,
+        //     decoration: BoxDecoration(
+        //       color: Colors.red,
+        //       borderRadius: BorderRadius.circular(10),
+        //     ),
+        //   ),
+        // ),
 
         // Destination Input Box
         Positioned(

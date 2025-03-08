@@ -270,6 +270,12 @@ async def track_gaze(websocket, path):
         x_win, y_win, w_win, h_win = cv2.getWindowImageRect(window_name)
         # print(f"Window dimensions: {x_win + w_win}x{y_win + h_win}")
         
+        # Convert the image to binary format for WebSocket Transmission
+        # _, buffer = cv2.imencode('.jpg', display_image)
+        # image_bytes = buffer.tobytes()
+        
+        # await websocket.send(image_bytes)
+        
         for face in faces:
             landmarks = predictor(gray, face)
             left_eye_points = get_eye_points(landmarks, range(36, 42))
@@ -302,12 +308,13 @@ async def track_gaze(websocket, path):
                     # Draw bounding boxes
                     for sign in signs:
                         cv2.rectangle(display_image, (sign["x1"], sign["y1"]), (sign["x2"], sign["y2"]), (0, 255, 0), 2)
-                        cv2.putText(display_image, sign["text"], (sign["x1"], sign["y1"] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                        cv2.putText(display_image, sign["text"], (sign["x1"], sign["y1"] - 10), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 255, 0), 2)
                     
                     # Map screen coordinates to image coordinates and draw gaze circle
+                    # cv2.circle(display_image, (screen_x, screen_y), 10, (0, 255, 0), -1)
                     gaze_x_image, gaze_y_image = map_screen_to_image(screen_x, screen_y, x_win + w_win, y_win + h_win, image_width, image_height)
-                    if 0 <= gaze_x_image < image_width and 0 <= gaze_y_image < image_height:
-                        cv2.circle(display_image, (gaze_x_image, gaze_y_image), 10, (0, 255, 0), -1)
+                    # if 0 <= gaze_x_image < image_width and 0 <= gaze_y_image < image_height:
+                    cv2.circle(display_image, (gaze_x_image, gaze_y_image), 10, (0, 255, 0), -1)
                     
                     # Focus detection
                     current_sign = None
@@ -342,10 +349,20 @@ async def track_gaze(websocket, path):
                     if isDetected:
                         ocr_results = [{"text": s["text"], "x1": s["x1"], "y1": s["y1"], "x2": s["x2"], "y2": s["y2"]} for s in signs]
                     else:
-                        ocr_results = ""
-                    gaze_data = {"x": screen_x, "y": screen_y, "ocr_results": ocr_results}
+                        ocr_results = []
+                    gaze_data = {
+                        "x": screen_x,
+                        "y": screen_y,
+                        "ocr_results": ocr_results
+                    }
                     await websocket.send(json.dumps(gaze_data))
                     # print(f"Sending gaze data: {gaze_data}")
+                    
+                    # Convert the image to binary format for WebSocket Transmission
+                    _, buffer = cv2.imencode('.jpg', display_image)
+                    image_bytes = buffer.tobytes()
+                    
+                    await websocket.send(image_bytes)
                     
                 if right_pupil:
                     cv2.circle(frame, right_pupil, 3, (0, 0, 255), -1)

@@ -8,7 +8,7 @@ class Geocodingservice {
   static const String baseUrl = "https://graphhopper.com/api/1/geocode";
 
   static Future<LatLng> getCoordinates(String address) async {
-    final url = Uri.parse("$baseUrl?q=$address&limit=18&key=$apiKey");
+    final url = Uri.parse("$baseUrl?q=$address&limit=10&key=$apiKey");
 
     final response = await http.get(url);
     if (response.statusCode == 200) {
