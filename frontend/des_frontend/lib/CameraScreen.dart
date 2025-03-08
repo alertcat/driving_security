@@ -146,14 +146,17 @@ class _CameraScreenState extends State<CameraScreen> {
                   box_y1 = ocrList[0]['y1'].toDouble();
                   box_y2 = ocrList[0]['y2'].toDouble();
                 } else {
+                  restaurantName = '';
                   box_x1 = box_x2 = box_y1 = box_y2 = 0;
                 }
               } else {
                 ocrResults = '';
+                // restaurantName = '';
                 box_x1 = box_x2 = box_y1 = box_y2 = 0;
               }
 
               print('Gaze X: $gazeX, Gaze Y: $gazeY');
+              print("Restaurant Name: $restaurantName");
             });
           }
         } catch (e) {
@@ -287,8 +290,8 @@ class _CameraScreenState extends State<CameraScreen> {
 
         // Gaze Tracking Overlay
         // Positioned(
-        //   left: gazeX.clamp(0, MediaQuery.of(context).size.width - 20),
-        //   top: gazeY.clamp(0, MediaQuery.of(context).size.height - 20),
+        // left: gazeX.clamp(0, MediaQuery.of(context).size.width - 20),
+        // top: gazeY.clamp(0, MediaQuery.of(context).size.height - 20),
         //   child: Container(
         //     width: 20,
         //     height: 20,
@@ -477,6 +480,44 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
           ),
         ),
+
+        // Overlay for Restaurant Info
+        if (restaurantName.isNotEmpty
+            // &&
+            //     gazeX >= box_x1 &&
+            //     gazeX <= box_x2 &&
+            //     gazeY >= box_y1 &&
+            //     gazeY <= box_y2
+            )
+          Positioned(
+              left:
+                  gazeX.clamp(0, MediaQuery.of(context).size.width - 20) - 100,
+              top:
+                  gazeY.clamp(0, MediaQuery.of(context).size.height - 20) - 100,
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.8),
+                  borderRadius: BorderRadius.circular(5),
+                  border: Border.all(color: Colors.white, width: 1),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      restaurantName,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold),
+                    ),
+                    const Text(
+                      'Rating: 4.5/5 (Google Reviews)', // Placeholder
+                      style: TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ))
       ]),
     );
   }

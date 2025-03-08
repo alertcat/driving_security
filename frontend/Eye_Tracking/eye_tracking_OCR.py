@@ -20,7 +20,7 @@ calibration_points = [
 pupil_positions = []
 screen_positions = []
 
-pupil_buffer = deque(maxlen=5)  # Adjust maxlen for more/less smoothing
+pupil_buffer = deque(maxlen=10)  # Adjust maxlen for more/less smoothing
 
 # Global variables for focus detection on signs
 focus_start_time = None
