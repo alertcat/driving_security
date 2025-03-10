@@ -13,8 +13,10 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:http/http.dart' as http;
 // import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 class CameraScreen extends StatefulWidget {
   // final CameraDescription camera;
@@ -49,6 +51,7 @@ class _CameraScreenState extends State<CameraScreen> {
   // OCR results
   String ocrResults = '';
   String restaurantName = '';
+  Map<String, dynamic>? _restaurantInfo;
   double box_x1 = 0;
   double box_x2 = 0;
   double box_y1 = 0;
@@ -58,6 +61,7 @@ class _CameraScreenState extends State<CameraScreen> {
   Uint8List? _imageBytes;
 
   // Chatbox with Computer
+  final BASE_URL = 'http://172.20.10.2:5000';
   final List<Map<String, String>> _chatMessages = []; // List of chat messages
   final TextEditingController _chatController =
       TextEditingController(); // Chat input controller
@@ -66,11 +70,18 @@ class _CameraScreenState extends State<CameraScreen> {
   late WebSocketChannel channel;
   StreamSubscription? _webSocketSubscription;
 
+  // Speech to text instance
+  stt.SpeechToText _speech = stt.SpeechToText();
+  bool _isListening = false;
+  String _recognizedText = '';
+  String _destinationDetected = '';
+
   @override
   void initState() {
     super.initState();
 
     _connectToServer();
+    _initializeSpeech();
 
     // _controller = CameraController(widget.camera, ResolutionPreset.veryHigh);
     // _initializeControllerFuture = _controller.initialize();
@@ -146,7 +157,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   box_y1 = ocrList[0]['y1'].toDouble();
                   box_y2 = ocrList[0]['y2'].toDouble();
                 } else {
-                  restaurantName = '';
+                  // restaurantName = '';
                   box_x1 = box_x2 = box_y1 = box_y2 = 0;
                 }
               } else {
@@ -173,13 +184,175 @@ class _CameraScreenState extends State<CameraScreen> {
     });
   }
 
-  void _sendMessage(String message) {
+  Future<void> _sendMessage(String message) async {
+    // Handle user input
     if (message.isNotEmpty) {
       setState(() {
         _chatMessages.add({'sender': 'You', 'text': message});
       });
-      channel.sink.add(jsonEncode({'chat': message}));
       _chatController.clear();
+    }
+
+    // Handle API OUTPUT
+    final url = Uri.parse('$BASE_URL/agent');
+
+    // Define custom headers
+    final headers = {
+      'Content-Type': 'application/json', // Specify JSON data
+      // 'Authorization': 'Bearer your-token-here', // Example auth header
+      // 'Custom-Header': 'SomeValue', // Custom header
+    };
+
+    final body = jsonEncode({
+      'longitude': _currentPostion.longitude,
+      'latitude': _currentPostion.latitude,
+    });
+
+    try {
+      final client = http.Client();
+      final req = http.Request('POST', url);
+      req.headers.addAll(headers);
+      req.body = body;
+
+      // Send the POST request and get streamed response
+      final response = await client.send(req);
+
+      // Check the response
+      if (response.statusCode == 200) {
+        print(
+            'Success: ${response.stream.transform(utf8.decoder)}'); // Print the response
+
+        await for (var chunk in response.stream.transform(utf8.decoder)) {
+          final lines = chunk.split('\n');
+          for (var line in lines) {
+            if (line.trim().isNotEmpty) {
+              // Add the string together
+              if (mounted) {
+                setState(() {
+                  _chatMessages.add({'sender': 'Com', 'text': line.trim()});
+                });
+              }
+            }
+          }
+        }
+      } else {
+        print('Failed: ${response.statusCode} - ${response.statusCode}');
+      }
+
+      client.close();
+    } catch (e) {
+      print('Error: $e');
+    }
+  }
+
+  void _initializeSpeech() async {
+    bool available = await _speech.initialize();
+    if (!available) {
+      print("Speech-to-text not available");
+      return;
+    }
+  }
+
+  void _startListening() async {
+    if (!_isListening) {
+      setState(() {
+        _isListening = true;
+        _recognizedText = '';
+        _destinationDetected = ''; // Reset only when starting a new session
+      });
+
+      _speech.listen(
+        onResult: (result) {
+          print("Recognized words: ${result.recognizedWords}"); // Debugging
+          setState(() {
+            _recognizedText = result.recognizedWords;
+            _processSpeech(_recognizedText);
+          });
+        },
+        listenFor: Duration(seconds: 5), // Listen for up to 5 seconds
+        pauseFor: Duration(seconds: 3), // Pause after 3 seconds of silence
+      );
+      setState(() {
+        _isListening = false;
+      });
+    }
+  }
+
+  void _stopListening() async {
+    if (_isListening) {
+      await _speech.stop();
+      setState(() {
+        _isListening = false;
+        // Do not reset _destinationDetected here
+      });
+    }
+  }
+
+  void _processSpeech(String text) {
+    if (text.toLowerCase().contains("go to")) {
+      List<String> words = text.toLowerCase().split("go to");
+      if (words.length > 1) {
+        setState(() {
+          _destinationDetected = words[1].trim();
+        });
+        print("Destination: $_destinationDetected");
+        _searchDestination(); // Call search function
+        // Do not call _stopListening() here
+      }
+    }
+  }
+
+  // Fetch restaurant info
+  Future<void> _fetchRestaurantInfo(String name) async {
+    // setState(() {
+    //   _restaurantInfo = {
+    //     "name": "Fong Seng Nasi Lemak",
+    //     "rating": 4.1,
+    //     "reviews": [
+    //       {
+    //         "author": "Emily Wong",
+    //         "rating": 5,
+    //         "text":
+    //             "As the HR team managing staff meals at the remote Jurong Fishery Port, where food options are limited, we’re grateful for the exceptional service Fong Seng team has provided.\nYou’ve made it possible for us to offer delicious and balanced meals to our staff every day.\n\nThe white rice is always perfectly cooked — 粒粒分明, and the nasi lemak rice is a firm favorite.\nThe nasi lemak-style chili brings just the right amount of spice, while the chicken wings, crispy outside and juicy inside, never disappoint.\n\nBeyond nasi lemak, we also love the sambal sotong, curry chicken, sesame oil chicken, and sweet and sour fish, all of which offer excellent variety.\nThe sunny-side-up eggs are always a delight too — crispy at the edges, but with a perfectly runny yolk!\n\nOverall, the meals are well-balanced, with a good mix of carbs, fiber, and protein, ensuring our staff stay energized and satisfied.\nWe truly appreciate the great service and quality food Fong Seng provide!"
+    //       }
+    //     ]
+    //   };
+    // });
+
+    // Define the URL of your Flask backend
+    final url = Uri.parse('$BASE_URL/search_place');
+
+    // Define custom headers
+    final headers = {
+      'Content-Type': 'application/json', // Specify JSON data
+      // 'Authorization': 'Bearer your-token-here', // Example auth header
+      // 'Custom-Header': 'SomeValue', // Custom header
+    };
+
+    final body = jsonEncode({
+      'place': 'Fong Seng Nasi Lemak Clementi',
+      'longitude': _currentPostion.longitude,
+      'latitude': _currentPostion.latitude,
+    });
+
+    try {
+      // Send the POST request
+      final response = await http.post(
+        url,
+        headers: headers,
+        body: body,
+      );
+
+      // Check the response
+      if (response.statusCode == 200) {
+        print('Success: ${response.body}');
+        _restaurantInfo = jsonDecode(response.body);
+      } else {
+        print('Failed: ${response.statusCode} - ${response.body}');
+        _restaurantInfo = null;
+      }
+    } catch (e) {
+      print('Error: $e');
     }
   }
 
@@ -210,7 +383,10 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _searchDestination() async {
-    String address = _destinationController.text;
+    // String address = _destinationController.text;
+    String address = _destinationDetected == ''
+        ? _destinationController.text
+        : _destinationDetected;
     if (address.isEmpty) return;
 
     try {
@@ -471,9 +647,12 @@ class _CameraScreenState extends State<CameraScreen> {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.send, color: Colors.white),
-                      onPressed: () => _sendMessage(_chatController.text),
-                    ),
+                        icon: const Icon(Icons.send, color: Colors.white),
+                        onPressed: () {
+                          _startListening();
+                          // _sendMessage(_chatController.text);
+                          // _fetchRestaurantInfo('Fong Seng Nasi Lemak Clementi');
+                        }),
                   ],
                 ),
               ],
@@ -481,40 +660,92 @@ class _CameraScreenState extends State<CameraScreen> {
           ),
         ),
 
-        // Overlay for Restaurant Info
-        if (restaurantName.isNotEmpty
-            // &&
-            //     gazeX >= box_x1 &&
-            //     gazeX <= box_x2 &&
-            //     gazeY >= box_y1 &&
-            //     gazeY <= box_y2
-            )
+        // Overlay for Restaurant Info when focus on it
+        if (restaurantName.isNotEmpty && _restaurantInfo != null)
           Positioned(
               left:
                   gazeX.clamp(0, MediaQuery.of(context).size.width - 20) - 100,
               top:
                   gazeY.clamp(0, MediaQuery.of(context).size.height - 20) - 100,
               child: Container(
-                padding: const EdgeInsets.all(8),
+                width: 350,
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.8),
-                  borderRadius: BorderRadius.circular(5),
-                  border: Border.all(color: Colors.white, width: 1),
-                ),
+                    gradient: LinearGradient(colors: [
+                      Colors.blueAccent.withOpacity(0.9),
+                      Colors.purpleAccent.withOpacity(0.9)
+                    ], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                    color: Colors.black.withOpacity(0.8),
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: [
+                      BoxShadow(
+                          color: Colors.black26,
+                          blurRadius: 10,
+                          offset: const Offset(0, 5))
+                    ]),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _restaurantInfo!['name'],
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.2),
+                        ),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.star,
+                              color: Colors.yellow,
+                              size: 18,
+                            ),
+                            const Text(' '),
+                            Text(
+                              '${_restaurantInfo!['rating']}/5',
+                              style: const TextStyle(
+                                  color: Colors.yellow,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600),
+                            )
+                          ],
+                        )
+                      ],
+                    ),
+                    const SizedBox(height: 10),
                     Text(
-                      restaurantName,
+                      'Reviews:',
+                      style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 5),
+                    Container(
+                      height: 100,
+                      child: SingleChildScrollView(
+                        child: Text(
+                          _restaurantInfo!['reviews'][0]['text'],
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 12),
+                          maxLines: 5,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'By ${_restaurantInfo!['reviews'][0]['author']}',
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold),
-                    ),
-                    const Text(
-                      'Rating: 4.5/5 (Google Reviews)', // Placeholder
-                      style: TextStyle(color: Colors.white, fontSize: 12),
-                    ),
+                          color: Colors.white70,
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic),
+                    )
                   ],
                 ),
               ))
