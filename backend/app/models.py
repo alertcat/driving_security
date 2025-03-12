@@ -148,8 +148,7 @@ def ai_agent(lat, lon):
             if keyword_index >= 0:  # Detected wake word
                 print("Wake words detected, start recording...")
                 # start recording
-                # user_prompt = STT()  # Speech-to-text
-                user_prompt = "go to clementi mall"
+                user_prompt = STT()  # Speech-to-text
                 message = f"User: {user_prompt}"
                 print(message)
 
