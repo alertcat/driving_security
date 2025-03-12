@@ -23,7 +23,10 @@ Future<Position> getCurrentLocation() async {
   }
 
   // set the location settings to default accuracy (best)
-  const LocationSettings locationSettings = LocationSettings();
+  const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 0,
+      timeLimit: Duration(seconds: 10));
 
   return await Geolocator.getCurrentPosition(
       locationSettings: locationSettings);

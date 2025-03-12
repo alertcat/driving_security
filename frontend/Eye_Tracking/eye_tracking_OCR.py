@@ -29,7 +29,7 @@ FOCUS_THRESHOLD = 1.0  # seconds
 
 # Resolutions (update these based on your setup)
 WEBCAM_WIDTH, WEBCAM_HEIGHT = 1280, 720  # Default webcam resolution (used for calibration)
-SCREEN_WIDTH, SCREEN_HEIGHT = 1920, 1080  # Default screen resolution
+# SCREEN_WIDTH, SCREEN_HEIGHT = 1920, 1080  # Default screen resolution
 IMAGE_WIDTH, IMAGE_HEIGHT = 960, 540  # From JSON limit_side_len (assuming 16:9 aspect ratio)
 
 def get_eye_points(landmarks, eye_indices):
@@ -67,8 +67,16 @@ def get_gaze_direction(pupil, eye_points):
 def map_pupil_to_screen(pupil):
     if len(pupil_positions) < 4:
         return (0, 0)
-    x = np.interp(pupil[0], [min(p[0] for p in pupil_positions), max(p[0] for p in pupil_positions)], [0, WEBCAM_WIDTH])
-    y = np.interp(pupil[1], [min(p[1] for p in pupil_positions), max(p[1] for p in pupil_positions)], [0, WEBCAM_HEIGHT])
+    screen_xs = [s[0] for s in screen_positions]  # e.g., [213, 640, 1067, ...]
+    screen_ys = [s[1] for s in screen_positions]  # e.g., [120, 360, 600, ...]
+    pupil_xs = [p[0] for p in pupil_positions]
+    pupil_ys = [p[1] for p in pupil_positions]
+    x = np.interp(pupil[0], [min(pupil_xs), max(pupil_xs)], [min(screen_xs), max(screen_xs)])
+    y = np.interp(pupil[1], [min(pupil_ys), max(pupil_ys)], [min(screen_ys), max(screen_ys)])
+    
+    # x = np.interp(pupil[0], [min(p[0] for p in pupil_positions), max(p[0] for p in pupil_positions)], [0, WEBCAM_WIDTH])
+    # y = np.interp(pupil[1], [min(p[1] for p in pupil_positions), max(p[1] for p in pupil_positions)], [0, WEBCAM_HEIGHT])
+    
     return int(x), int(y)
 
 def calculate_ear(eye_points):
@@ -156,22 +164,17 @@ def map_bbox_to_webcam(bbox):
 def load_ocr_results(json_path):
     with open(json_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
-    
     signs = []
     for i in range(len(data["rec_texts"])):
-        bbox_mapped = map_bbox_to_webcam(data["rec_boxes"][i])
+        bbox = data["rec_boxes"][i]  # Original image coordinates
         sign = {
             "text": data["rec_texts"][i],
-            "x1": bbox_mapped[0],  # x_min
-            "y1": bbox_mapped[1],  # y_min
-            "x2": bbox_mapped[2],  # x_max
-            "y2": bbox_mapped[3],  # y_max
+            "x1": bbox[0],
+            "y1": bbox[1],
+            "x2": bbox[2],
+            "y2": bbox[3],
             "score": data["rec_scores"][i],
-            "result": {
-                "text": data["rec_texts"][i],
-                "confidence": data["rec_scores"][i],
-                "position": data["dt_polys"][i]
-            }
+            "result": {"text": data["rec_texts"][i], "confidence": data["rec_scores"][i], "position": data["dt_polys"][i]}
         }
         signs.append(sign)
     return signs
@@ -189,26 +192,41 @@ def map_gaze_to_frame(gaze_x, gaze_y, window_x, window_y, window_width, window_h
     
     return x_frame, y_frame
 
-def map_screen_to_image(screen_x, screen_y, window_width, window_height, image_width, image_height):
+def map_screen_to_image(screen_x, screen_y, x_win, y_win, w_win, h_win, image_width, image_height):
     """
     Map screen coordinates to image coordinates based on window size and image resolution.
     """
-    scale_x = image_width / window_width
-    scale_y = image_height / window_height
-    x_image = int(screen_x * scale_x)
-    y_image = int(screen_y * scale_y)
-    return (x_image, y_image)
+    # scale_x = image_width / window_width
+    # scale_y = image_height / window_height
+    # x_image = int(screen_x * scale_x)
+    # y_image = int(screen_y * scale_y)
+    # return (x_image, y_image)
+    
+    # Check if gaze is within the window
+    if not (x_win <= screen_x <= x_win + w_win and y_win <= screen_y <= y_win + h_win):
+        return None, None
+    # Map screen coordinates to image coordinates
+    gaze_x_rel = (screen_x - x_win) / w_win  # Fraction of window width
+    gaze_y_rel = (screen_y - y_win) / h_win  # Fraction of window height
+    x_image = int(gaze_x_rel * image_width)
+    y_image = int(gaze_y_rel * image_height)
+    return x_image, y_image
 
-def is_gaze_on_sign(gaze_x, gaze_y, window_width, window_height, sign, image_width, image_height):
-    x_win, y_win, w_win, h_win = cv2.getWindowImageRect("Test Image")
-    gaze_x_frame, gaze_y_frame = map_gaze_to_frame(gaze_x, gaze_y, x_win, y_win, window_width, window_height)
+# def is_gaze_on_sign(gaze_x, gaze_y, window_width, window_height, sign, image_width, image_height):
+#     x_win, y_win, w_win, h_win = cv2.getWindowImageRect("Test Image")
+#     gaze_x_frame, gaze_y_frame = map_gaze_to_frame(gaze_x, gaze_y, x_win, y_win, window_width, window_height)
     
-    if gaze_x_frame is None or gaze_y_frame is None:
+#     if gaze_x_frame is None or gaze_y_frame is None:
+#         return False
+    
+#     # Map gaze coordinates to image space
+#     gaze_x_image, gaze_y_image = map_screen_to_image(gaze_x_frame, gaze_y_frame, x_win, w_win, y_win, h_win, w_win, h_win)
+    
+#     x1, y1, x2, y2 = sign["x1"], sign["y1"], sign["x2"], sign["y2"]
+#     return x1 <= gaze_x_image <= x2 and y1 <= gaze_y_image <= y2
+def is_gaze_on_sign(gaze_x_image, gaze_y_image, sign):
+    if gaze_x_image is None or gaze_y_image is None:
         return False
-    
-    # Map gaze coordinates to image space
-    gaze_x_image, gaze_y_image = map_screen_to_image(gaze_x_frame, gaze_y_frame, window_width, window_height, image_width, image_height)
-    
     x1, y1, x2, y2 = sign["x1"], sign["y1"], sign["x2"], sign["y2"]
     return x1 <= gaze_x_image <= x2 and y1 <= gaze_y_image <= y2
 
@@ -226,160 +244,172 @@ def process_ocr_result(sign):
 async def track_gaze(websocket, path):
     global focus_start_time, focused_sign  # Declare global variables
     
-    cap = cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-    cap.set(cv2.CAP_PROP_FPS, 30)
+    try:
+        cap = cv2.VideoCapture(0)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        cap.set(cv2.CAP_PROP_FPS, 30)
 
-    if not cap.isOpened():
-        print("Error: Could not open camera.")
-        exit()
-    
-    window_name = "Test Image"
-    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-    
-    # Load static image
-    img_path = "./frontend/Eye_Tracking/test.jpeg"
-    image = cv2.imread(img_path)
-    if image is None:
-        print("Error: Could not load test image.")
-        exit()
-    
-    # Get image dimensions
-    image_height, image_width = image.shape[:2]
-    print(f"Image dimensions: {image_width}x{image_height}")
-    
-    # Create a copy of the image to draw on
-    display_image = image.copy()
-    
-    isDetected = False
-    
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            print("Error: Cannot receive frame.")
-            break
+        if not cap.isOpened():
+            print("Error: Could not open camera.")
+            exit()
         
-        frame = cv2.flip(frame, 1)
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = detector(gray)
+        window_name = "Test Image"
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        
+        # Load static image
+        img_path = "./frontend/Eye_Tracking/test.jpeg"
+        image = cv2.imread(img_path)
+        if image is None:
+            print("Error: Could not load test image.")
+            exit()
+        
+        # Get image dimensions
+        image_height, image_width = image.shape[:2]
+        print(f"Image dimensions: {image_width}x{image_height}")
         
         # Create a copy of the image to draw on
         display_image = image.copy()
         
-        x_win, y_win, w_win, h_win = cv2.getWindowImageRect(window_name)
-        # print(f"Window dimensions: {x_win + w_win}x{y_win + h_win}")
+        isDetected = False
         
-        # Convert the image to binary format for WebSocket Transmission
-        # _, buffer = cv2.imencode('.jpg', display_image)
-        # image_bytes = buffer.tobytes()
-        
-        # await websocket.send(image_bytes)
-        
-        for face in faces:
-            landmarks = predictor(gray, face)
-            left_eye_points = get_eye_points(landmarks, range(36, 42))
-            right_eye_points = get_eye_points(landmarks, range(42, 48))
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                print("Error: Cannot receive frame.")
+                break
             
-            left_pupil = detect_pupil(gray, left_eye_points)
-            right_pupil = detect_pupil(gray, right_eye_points)
+            frame = cv2.flip(frame, 1)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = detector(gray)
             
-            left_ear = calculate_ear(left_eye_points)
-            right_ear = calculate_ear(right_eye_points)
-            ear_threshold = 0.2
+            # Create a copy of the image to draw on
+            display_image = image.copy()
             
-            if left_ear > ear_threshold and right_ear > ear_threshold:
-                if left_pupil:
-                    cv2.circle(frame, left_pupil, 3, (0, 0, 255), -1)
-                    direction = get_gaze_direction(left_pupil, left_eye_points)
-                    
-                    pupil_buffer.append(left_pupil)
-                    smoothed_pupil = np.mean(pupil_buffer, axis=0).astype(int)
-                    
-                    screen_x, screen_y = map_pupil_to_screen(smoothed_pupil)
-                    cv2.circle(frame, (screen_x, screen_y), 10, (0, 255, 0), -1)
-                    
-                    # Load OCR results from JSON
-                    signs = load_ocr_results("./frontend/Eye_Tracking/output/test_res.json")
-                    
-                    # Create a copy of the image to draw on
-                    display_image = image.copy()
-                    
-                    # Draw bounding boxes
-                    for sign in signs:
-                        cv2.rectangle(display_image, (sign["x1"], sign["y1"]), (sign["x2"], sign["y2"]), (0, 255, 0), 2)
-                        cv2.putText(display_image, sign["text"], (sign["x1"], sign["y1"] - 10), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 255, 0), 2)
-                    
-                    # Map screen coordinates to image coordinates and draw gaze circle
-                    # cv2.circle(display_image, (screen_x, screen_y), 10, (0, 255, 0), -1)
-                    gaze_x_image, gaze_y_image = map_screen_to_image(screen_x, screen_y, x_win + w_win, y_win + h_win, image_width, image_height)
-                    # if 0 <= gaze_x_image < image_width and 0 <= gaze_y_image < image_height:
-                    cv2.circle(display_image, (gaze_x_image, gaze_y_image), 10, (0, 255, 0), -1)
-                    
-                    # Focus detection
-                    current_sign = None
-                    for sign in signs:
-                        if is_gaze_on_sign(screen_x, screen_y, w_win, h_win, sign, image_width, image_height):
-                            current_sign = sign
-                            print(f"Focused on sign: {current_sign['text']}")
-                            break
+            x_win, y_win, w_win, h_win = cv2.getWindowImageRect(window_name)
+            # print(f"Window dimensions: {x_win + w_win}x{y_win + h_win}")
+            
+            # Convert the image to binary format for WebSocket Transmission
+            # _, buffer = cv2.imencode('.jpg', display_image)
+            # image_bytes = buffer.tobytes()
+            
+            # await websocket.send(image_bytes)
+            
+            for face in faces:
+                landmarks = predictor(gray, face)
+                left_eye_points = get_eye_points(landmarks, range(36, 42))
+                right_eye_points = get_eye_points(landmarks, range(42, 48))
+                
+                left_pupil = detect_pupil(gray, left_eye_points)
+                right_pupil = detect_pupil(gray, right_eye_points)
+                
+                left_ear = calculate_ear(left_eye_points)
+                right_ear = calculate_ear(right_eye_points)
+                ear_threshold = 0.2
+                
+                if left_ear > ear_threshold and right_ear > ear_threshold:
+                    if left_pupil:
+                        cv2.circle(frame, left_pupil, 3, (0, 0, 255), -1)
+                        direction = get_gaze_direction(left_pupil, left_eye_points)
                         
-                    print(f"Current sign: {current_sign}")
-                    if current_sign:
-                        print(f"Focused on sign now: {current_sign['text']}")
-                        if focused_sign is None:
-                            focused_sign = current_sign
-                            focus_start_time = time.time()
-                        elif focused_sign == current_sign:
-                            if time.time() - focus_start_time >= 0.5:
-                                print("Detected focus on sign for 0.5 second.")
-                                isDetected = True
-                                process_ocr_result(focused_sign)
-                                focused_sign = None
-                                focus_start_time = None
+                        pupil_buffer.append(left_pupil)
+                        smoothed_pupil = np.mean(pupil_buffer, axis=0).astype(int)
+                        
+                        screen_x, screen_y = map_pupil_to_screen(smoothed_pupil)
+                        cv2.circle(frame, (screen_x, screen_y), 10, (0, 255, 0), -1)
+                        
+                        # Load OCR results from JSON
+                        signs = load_ocr_results("./frontend/Eye_Tracking/output/test_res.json")
+                        
+                        # Create a copy of the image to draw on
+                        display_image = image.copy()
+                        
+                        # Draw bounding boxes
+                        # for sign in signs:
+                        #     cv2.rectangle(display_image, (sign["x1"], sign["y1"]), (sign["x2"], sign["y2"]), (0, 255, 0), 2)
+                        #     cv2.putText(display_image, sign["text"], (sign["x1"], sign["y1"] - 10), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 255, 0), 2)
+                        
+                        # Map screen coordinates to image coordinates and draw gaze circle
+                        # cv2.circle(display_image, (screen_x, screen_y), 10, (0, 255, 0), -1)
+                        gaze_x_image, gaze_y_image = map_screen_to_image(screen_x, screen_y, x_win, y_win, w_win, h_win, image_width, image_height)
+                        if gaze_x_image is not None and gaze_y_image is not None:
+                            if gaze_x_image < image_width and gaze_x_image >= 0 and gaze_y_image >= 0 and gaze_y_image < image_height:
+                                cv2.circle(display_image, (int(gaze_x_image), int(gaze_y_image)), 10, (0, 255, 0), -1)
                         else:
-                            focused_sign = current_sign
-                            focus_start_time = time.time()
-                    else:
-                        isDetected = False
-                        focused_sign = None
-                        focus_start_time = None
-                    
-                    # Send gaze data to frontend
-                    if isDetected:
-                        ocr_results = [{"text": s["text"], "x1": s["x1"], "y1": s["y1"], "x2": s["x2"], "y2": s["y2"]} for s in signs]
-                    else:
-                        ocr_results = []
-                    gaze_data = {
-                        "x": screen_x,
-                        "y": screen_y,
-                        "ocr_results": ocr_results
-                    }
-                    await websocket.send(json.dumps(gaze_data))
-                    # print(f"Sending gaze data: {gaze_data}")
-                    
-                    # Convert the image to binary format for WebSocket Transmission
-                    _, buffer = cv2.imencode('.jpg', display_image)
-                    image_bytes = buffer.tobytes()
-                    
-                    await websocket.send(image_bytes)
-                    
-                if right_pupil:
-                    cv2.circle(frame, right_pupil, 3, (0, 0, 255), -1)
-                    direction = get_gaze_direction(right_pupil, right_eye_points)
-            
-            cv2.polylines(frame, [left_eye_points], True, (0, 255, 0), 2)
-            cv2.polylines(frame, [right_eye_points], True, (0, 255, 0), 2)
-        
-        cv2.imshow('Eyes detector', frame)
-        cv2.imshow("Test Image", display_image)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-        
-        await asyncio.sleep(0.01)
+                            print(f"Invalid gaze coordinates")
+                            gaze_x_image = -1
+                            gaze_y_image = -1
+                                
+                        # Focus detection
+                        current_sign = None
+                        for sign in signs:
+                            if is_gaze_on_sign(gaze_x_image, gaze_y_image, sign):
+                                current_sign = sign
+                                print(f"Focused on sign: {current_sign['text']}")
+                                break
 
-    cap.release()
-    cv2.destroyAllWindows()
+                        print(f"Current sign: {current_sign}")
+                        if current_sign:
+                            print(f"Focused on sign now: {current_sign['text']}")
+                            if focused_sign is None:
+                                focused_sign = current_sign
+                                focus_start_time = time.time()
+                            elif focused_sign == current_sign:
+                                if time.time() - focus_start_time >= 0.5:
+                                    print("Detected focus on sign for 0.5 second.")
+                                    isDetected = True
+                                    process_ocr_result(focused_sign)
+                                    focused_sign = None
+                                    focus_start_time = None
+                            else:
+                                focused_sign = current_sign
+                                focus_start_time = time.time()
+                        else:
+                            isDetected = False
+                            focused_sign = None
+                            focus_start_time = None
+                        
+                        # Send gaze data to frontend
+                        if isDetected:
+                            ocr_results = [{"text": s["text"], "x1": s["x1"], "y1": s["y1"], "x2": s["x2"], "y2": s["y2"]} for s in signs]
+                        else:
+                            ocr_results = []
+                        gaze_data = {
+                            "x": gaze_x_image if gaze_x_image is not None else -1,
+                            "y": gaze_y_image if gaze_y_image is not None else -1,
+                            "ocr_results": ocr_results,
+                            "image_width": image_width,
+                            "image_height": image_height
+                        }
+                        await websocket.send(json.dumps(gaze_data))
+                        # print(f"Sending gaze data: {gaze_data}")
+                        
+                        # Convert the image to binary format for WebSocket Transmission
+                        _, buffer = cv2.imencode('.jpg', display_image)
+                        image_bytes = buffer.tobytes()
+                        
+                        await websocket.send(image_bytes)
+                        
+                    if right_pupil:
+                        cv2.circle(frame, right_pupil, 3, (0, 0, 255), -1)
+                        direction = get_gaze_direction(right_pupil, right_eye_points)
+                
+                cv2.polylines(frame, [left_eye_points], True, (0, 255, 0), 2)
+                cv2.polylines(frame, [right_eye_points], True, (0, 255, 0), 2)
+            
+            cv2.imshow('Eyes detector', frame)
+            cv2.imshow("Test Image", display_image)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+            
+            await asyncio.sleep(0.01)
+    except websockets.exceptions.ConnectionClosed:
+        print("Client disconnected")
+    except Exception as e:
+        print(f"Tracking error: {str(e)}")
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
 
 async def main():
     if calibrate():

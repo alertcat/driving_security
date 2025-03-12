@@ -52,10 +52,13 @@ class _CameraScreenState extends State<CameraScreen> {
   String ocrResults = '';
   String restaurantName = '';
   Map<String, dynamic>? _restaurantInfo;
-  double box_x1 = 0;
-  double box_x2 = 0;
-  double box_y1 = 0;
-  double box_y2 = 0;
+  double box_x1 = 1000;
+  double box_x2 = 50;
+  double box_y1 = 100;
+  double box_y2 = 50;
+  bool _doneUpdateBox = false;
+  double box_pos_x = 0;
+  double box_pos_y = 0;
 
   // Image data (Will be changed to video and live footage soon)
   Uint8List? _imageBytes;
@@ -69,6 +72,7 @@ class _CameraScreenState extends State<CameraScreen> {
   // Websocket channel
   late WebSocketChannel channel;
   StreamSubscription? _webSocketSubscription;
+  bool isFirstMessage = false;
 
   // Speech to text instance
   stt.SpeechToText _speech = stt.SpeechToText();
@@ -122,10 +126,8 @@ class _CameraScreenState extends State<CameraScreen> {
           // Check if it's a chat message
           if (decodedData['chat'] != null) {
             setState(() {
-              _chatMessages.add({
-                'sender': 'Computer',
-                'text': decodedData['chat'].toString(),
-              });
+              _chatMessages.add(
+                  {'sender': 'Com', 'text': decodedData['chat'].toString()});
             });
           }
           // Handle gaze and OCR data
@@ -133,17 +135,20 @@ class _CameraScreenState extends State<CameraScreen> {
             setState(() {
               double screenWidth = MediaQuery.of(context).size.width;
               double screenHeight = MediaQuery.of(context).size.height;
-              // Safely access x and y, default to 0 if missing or invalid
-              gazeX = (decodedData['x'] is num
-                      ? decodedData['x'].toDouble()
-                      : 0.0) /
-                  1280 *
-                  screenWidth;
-              gazeY = (decodedData['y'] is num
-                      ? decodedData['y'].toDouble()
-                      : 0.0) /
-                  720 *
-                  screenHeight;
+
+              // Use actual image dimensions from the server
+              double imageWidth = decodedData['image_width'].toDouble();
+              double imageHeight = decodedData['image_height'].toDouble();
+
+              // Scale gaze coordinates
+              gazeX =
+                  (decodedData['x'] is num ? decodedData['x'].toDouble() : -1) /
+                      imageWidth *
+                      screenWidth;
+              gazeY =
+                  (decodedData['y'] is num ? decodedData['y'].toDouble() : -1) /
+                      imageHeight *
+                      screenHeight;
 
               // Handle OCR results
               if (decodedData.containsKey('ocr_results') &&
@@ -152,20 +157,23 @@ class _CameraScreenState extends State<CameraScreen> {
                 List<dynamic> ocrList = jsonDecode(ocrResults);
                 if (ocrList.isNotEmpty) {
                   restaurantName = ocrList[0]['text'];
-                  box_x1 = ocrList[0]['x1'].toDouble();
-                  box_x2 = ocrList[0]['x2'].toDouble();
-                  box_y1 = ocrList[0]['y1'].toDouble();
-                  box_y2 = ocrList[0]['y2'].toDouble();
+                  box_x1 =
+                      ocrList[0]['x1'].toDouble() / imageWidth * screenWidth;
+                  box_y1 =
+                      ocrList[0]['y1'].toDouble() / imageHeight * screenHeight;
+                  box_x2 =
+                      ocrList[0]['x2'].toDouble() / imageWidth * screenWidth;
+                  box_y2 =
+                      ocrList[0]['y2'].toDouble() / imageHeight * screenHeight;
+                  print('Box x: ${(box_x1 + box_x2) / 2}');
+                  print('Box y: ${(box_y1 + box_y2) / 2}');
                 } else {
-                  // restaurantName = '';
                   box_x1 = box_x2 = box_y1 = box_y2 = 0;
                 }
               } else {
                 ocrResults = '';
-                // restaurantName = '';
                 box_x1 = box_x2 = box_y1 = box_y2 = 0;
               }
-
               print('Gaze X: $gazeX, Gaze Y: $gazeY');
               print("Restaurant Name: $restaurantName");
             });
@@ -207,6 +215,8 @@ class _CameraScreenState extends State<CameraScreen> {
       'longitude': _currentPostion.longitude,
       'latitude': _currentPostion.latitude,
     });
+    print(
+        "Current Position: ${_currentPostion.latitude}, ${_currentPostion.longitude}");
 
     try {
       final client = http.Client();
@@ -228,12 +238,34 @@ class _CameraScreenState extends State<CameraScreen> {
             if (line.trim().isNotEmpty) {
               // Add the string together
               if (mounted) {
-                setState(() {
-                  _chatMessages.add({'sender': 'Com', 'text': line.trim()});
-                });
+                String firstWord = line.trim().split(" ")[0];
+                String remainingText =
+                    line.trim().split(" ").sublist(1).join(" ");
+                if (firstWord == "User:") {
+                  setState(() {
+                    _chatMessages.add({
+                      'sender': 'You',
+                      'text': remainingText,
+                    });
+                  });
+                  // isFirstMessage = false;
+                } else {
+                  setState(() {
+                    _chatMessages.add({
+                      'sender': 'Com',
+                      'text': remainingText,
+                    });
+                  });
+                }
+                // setState(() {
+                //   _chatMessages.add({'sender': 'Com', 'text': line.trim()});
+                // });
               }
             }
           }
+          // setState(() {
+          //   isFirstMessage = true;
+          // });
         }
       } else {
         print('Failed: ${response.statusCode} - ${response.statusCode}');
@@ -330,7 +362,7 @@ class _CameraScreenState extends State<CameraScreen> {
     };
 
     final body = jsonEncode({
-      'place': 'Fong Seng Nasi Lemak Clementi',
+      'place': name,
       'longitude': _currentPostion.longitude,
       'latitude': _currentPostion.latitude,
     });
@@ -479,33 +511,33 @@ class _CameraScreenState extends State<CameraScreen> {
         // ),
 
         // Destination Input Box
-        Positioned(
-          top: 40,
-          left: 20,
-          right: 20,
-          child: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.8),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                    child: TextField(
-                  controller: _destinationController,
-                  decoration: const InputDecoration(
-                    hintText: "Enter Destination",
-                    border: InputBorder.none,
-                  ),
-                )),
-                IconButton(
-                    onPressed: _searchDestination,
-                    icon: const Icon(Icons.search))
-              ],
-            ),
-          ),
-        ),
+        // Positioned(
+        //   top: 40,
+        //   left: 20,
+        //   right: 20,
+        //   child: Container(
+        //     padding: const EdgeInsets.all(10),
+        //     decoration: BoxDecoration(
+        //       color: Colors.white.withOpacity(0.8),
+        //       borderRadius: BorderRadius.circular(10),
+        //     ),
+        //     child: Row(
+        //       children: [
+        //         Expanded(
+        //             child: TextField(
+        //           controller: _destinationController,
+        //           decoration: const InputDecoration(
+        //             hintText: "Enter Destination",
+        //             border: InputBorder.none,
+        //           ),
+        //         )),
+        //         IconButton(
+        //             onPressed: _searchDestination,
+        //             icon: const Icon(Icons.search))
+        //       ],
+        //     ),
+        //   ),
+        // ),
 
         // Live Map Overlay (Bottom Left)
         Positioned(
@@ -600,7 +632,7 @@ class _CameraScreenState extends State<CameraScreen> {
               children: [
                 Container(
                   width: 200, // Explicit width to ensure layout stability
-                  height: 100, // Fixed height for the chat area
+                  height: 250, // Fixed height for the chat area
                   child: _chatMessages.isEmpty
                       ? const Center(
                           child: Text(
@@ -650,8 +682,8 @@ class _CameraScreenState extends State<CameraScreen> {
                         icon: const Icon(Icons.send, color: Colors.white),
                         onPressed: () {
                           _startListening();
-                          // _sendMessage(_chatController.text);
-                          // _fetchRestaurantInfo('Fong Seng Nasi Lemak Clementi');
+                          _sendMessage(_chatController.text);
+                          _fetchRestaurantInfo('Ng Kuan Chili Pan Mee');
                         }),
                   ],
                 ),
@@ -663,10 +695,11 @@ class _CameraScreenState extends State<CameraScreen> {
         // Overlay for Restaurant Info when focus on it
         if (restaurantName.isNotEmpty && _restaurantInfo != null)
           Positioned(
-              left:
-                  gazeX.clamp(0, MediaQuery.of(context).size.width - 20) - 100,
-              top:
-                  gazeY.clamp(0, MediaQuery.of(context).size.height - 20) - 100,
+              // left:
+              //     gazeX.clamp(0, MediaQuery.of(context).size.width - 20) - 100,
+              // top: gazeY.clamp(0, MediaQuery.of(context).size.width - 20) - 100,
+              left: (box_x1 + box_x2) / 2 + 100,
+              top: (box_y1 + box_y2) / 2 + 100,
               child: Container(
                 width: 350,
                 padding: const EdgeInsets.all(16),
