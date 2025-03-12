@@ -43,7 +43,10 @@ pip install -r requirements.txt
 
 #### Run the Application:
 ```bash
-python main.py
+python ./backend/run.py
+python ./frontend/Eye_Tracking/eye_tracking_OCR.py
+cd ./frontend/des_frontend
+flutter run
 ```
 
 ## Usage
@@ -60,9 +63,8 @@ Once installed, launch the DriveVision AI system by running `main.py`. The appli
 
 For detailed commands or hardware setup instructions, refer to inline documentation in `main.py` or additional guides (to be developed).
 
-## Market Potential
-
-![Market Analysis](image-path/slide_6.png)
-
 ## Contact
-For questions, feedback, or support, reach out to the maintainers via GitHub Issues or contact the `alertcat` organization.
+For questions, feedback, or support, please feel free to email us:
+1. Long Zhen: e1351306@u.nus.edu
+2. Zhou Yukang: e1350979@u.nus.edu
+3. Choy Min Han: choymh23@u.nus.edu
