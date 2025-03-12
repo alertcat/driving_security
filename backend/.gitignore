@@ -1,4 +1,4 @@
 .gitignore
-config.py
+__pycache__/
 audio.wav
 output.wav
